@@ -1,17 +1,19 @@
-.PHONY: help build run test clean migrate rollback status sync setup-db
+.PHONY: help build run test clean migrate rollback status sync-platforms sync-categories sync-all setup-db
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  build       - Build the application"
-	@echo "  run         - Run the application"
-	@echo "  test        - Run tests"
-	@echo "  clean       - Clean build artifacts"
-	@echo "  migrate     - Run database migrations"
-	@echo "  rollback    - Rollback last migration"
-	@echo "  status      - Show migration status"
-	@echo "  sync        - Sync asset platforms from CoinGecko API"
-	@echo "  setup-db    - Setup local PostgreSQL database"
+	@echo "  build           - Build the application"
+	@echo "  run             - Run the application"
+	@echo "  test            - Run tests"
+	@echo "  clean           - Clean build artifacts"
+	@echo "  migrate         - Run database migrations"
+	@echo "  rollback        - Rollback last migration"
+	@echo "  status          - Show migration status"
+	@echo "  sync-platforms  - Sync asset platforms from CoinGecko API"
+	@echo "  sync-categories - Sync coin categories from CoinGecko API"
+	@echo "  sync-all        - Sync both asset platforms and coin categories"
+	@echo "  setup-db        - Setup local PostgreSQL database"
 
 # Build the application
 build:
@@ -46,9 +48,17 @@ status: build
 	@echo "Showing migration status..."
 	./bin/cgoffline -status
 
-sync: build
+sync-platforms: build
 	@echo "Syncing asset platforms..."
-	./bin/cgoffline -sync
+	./bin/cgoffline -sync-platforms
+
+sync-categories: build
+	@echo "Syncing coin categories..."
+	./bin/cgoffline -sync-categories
+
+sync-all: build
+	@echo "Syncing all data (platforms and categories)..."
+	./bin/cgoffline -sync-all
 
 # Database setup
 setup-db:
@@ -76,7 +86,7 @@ dev-setup: setup-db
 # Full sync with fresh data
 full-sync: build
 	@echo "Performing full synchronization..."
-	./bin/cgoffline -sync
+	./bin/cgoffline -sync-all
 
 # Show help
 help:

@@ -23,6 +23,17 @@ func GetMigrations() []*gormigrate.Migration {
 			},
 		},
 		{
+			ID: "2024010103",
+			Migrate: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Running migration: Create coin_categories table")
+				return tx.AutoMigrate(&domain.CoinCategory{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Rolling back migration: Drop coin_categories table")
+				return tx.Migrator().DropTable(&domain.CoinCategory{})
+			},
+		},
+		{
 			ID: "2024010102",
 			Migrate: func(tx *gorm.DB) error {
 				logger.GetLogger().Info("Running migration: Add indexes to asset_platforms table")

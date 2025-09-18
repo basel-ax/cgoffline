@@ -84,10 +84,17 @@ nano env
 make migrate
 ```
 
-### 5. Sync Asset Platforms
+### 5. Sync Data
 
 ```bash
-make sync
+# Sync asset platforms only
+make sync-platforms
+
+# Sync coin categories only
+make sync-categories
+
+# Sync both platforms and categories
+make sync-all
 ```
 
 ### 6. Run the Application
@@ -111,7 +118,13 @@ make run
 ./bin/cgoffline -status
 
 # Sync asset platforms and exit
-./bin/cgoffline -sync
+./bin/cgoffline -sync-platforms
+
+# Sync coin categories and exit
+./bin/cgoffline -sync-categories
+
+# Sync both platforms and categories and exit
+./bin/cgoffline -sync-all
 
 # Run application normally (with initial sync)
 ./bin/cgoffline
@@ -120,17 +133,19 @@ make run
 ### Makefile Commands
 
 ```bash
-make help          # Show available commands
-make build         # Build the application
-make run           # Run the application
-make test          # Run tests
-make clean         # Clean build artifacts
-make migrate       # Run database migrations
-make rollback      # Rollback last migration
-make status        # Show migration status
-make sync          # Sync asset platforms
-make setup-db      # Setup local PostgreSQL database
-make dev-setup     # Complete development setup
+make help           # Show available commands
+make build          # Build the application
+make run            # Run the application
+make test           # Run tests
+make clean          # Clean build artifacts
+make migrate        # Run database migrations
+make rollback       # Rollback last migration
+make status         # Show migration status
+make sync-platforms # Sync asset platforms
+make sync-categories # Sync coin categories
+make sync-all       # Sync both platforms and categories
+make setup-db       # Setup local PostgreSQL database
+make dev-setup      # Complete development setup
 ```
 
 ## Configuration
@@ -161,7 +176,9 @@ cp env.example env
 
 ## Database Schema
 
-The application creates an `asset_platforms` table with the following structure:
+The application creates two main tables:
+
+### Asset Platforms Table
 
 ```sql
 CREATE TABLE asset_platforms (
@@ -181,15 +198,43 @@ CREATE INDEX idx_asset_platforms_name ON asset_platforms(name);
 CREATE INDEX idx_asset_platforms_native_coin_id ON asset_platforms(native_coin_id);
 ```
 
+### Coin Categories Table
+
+```sql
+CREATE TABLE coin_categories (
+    id SERIAL PRIMARY KEY,
+    coingecko_id VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes
+CREATE UNIQUE INDEX idx_coin_categories_coingecko_id ON coin_categories(coingecko_id);
+CREATE INDEX idx_coin_categories_name ON coin_categories(name);
+```
+
 ## API Integration
 
-The application integrates with the CoinGecko API to fetch asset platforms data:
+The application integrates with the CoinGecko API to fetch data from two endpoints:
 
+### Asset Platforms
 - **Endpoint**: `https://api.coingecko.com/api/v3/asset_platforms`
 - **Method**: GET
 - **Response**: Array of asset platform objects
+- **Data**: Blockchain platforms with chain identifiers and native coins
+
+### Coin Categories
+- **Endpoint**: `https://api.coingecko.com/api/v3/coins/categories/list`
+- **Method**: GET
+- **Response**: Array of category objects
+- **Data**: Coin categories like DeFi, Stablecoins, NFTs, etc.
+
+### Features
 - **Rate Limiting**: Built-in retry logic with exponential backoff
 - **Health Check**: API connectivity verification
+- **Error Handling**: Comprehensive error handling and logging
 
 ## Development
 
