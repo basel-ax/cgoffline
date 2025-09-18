@@ -19,7 +19,8 @@ func main() {
 	var (
 		syncPlatforms  = flag.Bool("sync-platforms", false, "Only sync asset platforms and exit")
 		syncCategories = flag.Bool("sync-categories", false, "Only sync coin categories and exit")
-		syncAll        = flag.Bool("sync-all", false, "Sync both asset platforms and coin categories and exit")
+		syncExchanges  = flag.Bool("sync-exchanges", false, "Only sync exchanges and exit")
+		syncAll        = flag.Bool("sync-all", false, "Sync asset platforms, coin categories, and exchanges and exit")
 		migrate        = flag.Bool("migrate", false, "Run database migrations and exit")
 		rollback       = flag.Bool("rollback", false, "Rollback last migration and exit")
 		status         = flag.Bool("status", false, "Show migration status and exit")
@@ -73,9 +74,11 @@ func main() {
 	// Initialize repositories and services
 	assetPlatformRepo := repository.NewAssetPlatformRepository(db)
 	coinCategoryRepo := repository.NewCoinCategoryRepository(db)
+	exchangeRepo := repository.NewExchangeRepository(db)
 	coinGeckoClient := service.NewCoinGeckoClient(cfg.API)
 	assetPlatformService := service.NewAssetPlatformService(assetPlatformRepo, coinGeckoClient)
 	coinCategoryService := service.NewCoinCategoryService(coinCategoryRepo, coinGeckoClient)
+	exchangeService := service.NewExchangeService(exchangeRepo, coinGeckoClient)
 
 	// Handle sync-platforms mode
 	if *syncPlatforms {
@@ -97,24 +100,41 @@ func main() {
 		return
 	}
 
+	// Handle sync-exchanges mode
+	if *syncExchanges {
+		log.Info("Running exchanges synchronization")
+		if err := exchangeService.SyncExchanges(); err != nil {
+			log.WithError(err).Fatal("Failed to sync exchanges")
+		}
+		log.Info("Exchanges synchronization completed successfully")
+		return
+	}
+
 	// Handle sync-all mode
 	if *syncAll {
-		log.Info("Running full synchronization (platforms and categories)")
-		
+		log.Info("Running full synchronization (platforms, categories, and exchanges)")
+
 		// Sync asset platforms first
 		log.Info("Syncing asset platforms...")
 		if err := assetPlatformService.SyncAssetPlatforms(); err != nil {
 			log.WithError(err).Fatal("Failed to sync asset platforms")
 		}
 		log.Info("Asset platforms synchronization completed successfully")
-		
+
 		// Sync coin categories
 		log.Info("Syncing coin categories...")
 		if err := coinCategoryService.SyncCoinCategories(); err != nil {
 			log.WithError(err).Fatal("Failed to sync coin categories")
 		}
 		log.Info("Coin categories synchronization completed successfully")
-		
+
+		// Sync exchanges
+		log.Info("Syncing exchanges...")
+		if err := exchangeService.SyncExchanges(); err != nil {
+			log.WithError(err).Fatal("Failed to sync exchanges")
+		}
+		log.Info("Exchanges synchronization completed successfully")
+
 		log.Info("Full synchronization completed successfully")
 		return
 	}
@@ -146,7 +166,8 @@ func printUsage() {
 	fmt.Println("Options:")
 	fmt.Println("  -sync-platforms   Only sync asset platforms and exit")
 	fmt.Println("  -sync-categories  Only sync coin categories and exit")
-	fmt.Println("  -sync-all         Sync both asset platforms and coin categories and exit")
+	fmt.Println("  -sync-exchanges   Only sync exchanges and exit")
+	fmt.Println("  -sync-all         Sync asset platforms, coin categories, and exchanges and exit")
 	fmt.Println("  -migrate          Run database migrations and exit")
 	fmt.Println("  -rollback         Rollback last migration and exit")
 	fmt.Println("  -status           Show migration status and exit")

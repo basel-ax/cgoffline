@@ -93,7 +93,10 @@ make sync-platforms
 # Sync coin categories only
 make sync-categories
 
-# Sync both platforms and categories
+# Sync exchanges only
+make sync-exchanges
+
+# Sync all data (platforms, categories, and exchanges)
 make sync-all
 ```
 
@@ -123,7 +126,10 @@ make run
 # Sync coin categories and exit
 ./bin/cgoffline -sync-categories
 
-# Sync both platforms and categories and exit
+# Sync exchanges and exit
+./bin/cgoffline -sync-exchanges
+
+# Sync all data (platforms, categories, and exchanges) and exit
 ./bin/cgoffline -sync-all
 
 # Run application normally (with initial sync)
@@ -143,7 +149,8 @@ make rollback       # Rollback last migration
 make status         # Show migration status
 make sync-platforms # Sync asset platforms
 make sync-categories # Sync coin categories
-make sync-all       # Sync both platforms and categories
+make sync-exchanges  # Sync exchanges
+make sync-all       # Sync all data (platforms, categories, and exchanges)
 make setup-db       # Setup local PostgreSQL database
 make dev-setup      # Complete development setup
 ```
@@ -176,7 +183,7 @@ cp env.example env
 
 ## Database Schema
 
-The application creates two main tables:
+The application creates three main tables:
 
 ### Asset Platforms Table
 
@@ -215,9 +222,38 @@ CREATE UNIQUE INDEX idx_coin_categories_coingecko_id ON coin_categories(coingeck
 CREATE INDEX idx_coin_categories_name ON coin_categories(name);
 ```
 
+### Exchanges Table
+
+```sql
+CREATE TABLE exchanges (
+    id SERIAL PRIMARY KEY,
+    coingecko_id VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    year_established INTEGER,
+    country VARCHAR(100),
+    description TEXT,
+    url VARCHAR(500),
+    image VARCHAR(500),
+    has_trading_incentive BOOLEAN,
+    trust_score INTEGER,
+    trust_score_rank INTEGER,
+    trade_volume_24h_btc DOUBLE PRECISION,
+    trade_volume_24h_btc_normalized DOUBLE PRECISION,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes
+CREATE UNIQUE INDEX idx_exchanges_coingecko_id ON exchanges(coingecko_id);
+CREATE INDEX idx_exchanges_name ON exchanges(name);
+CREATE INDEX idx_exchanges_trust_score ON exchanges(trust_score);
+CREATE INDEX idx_exchanges_country ON exchanges(country);
+```
+
 ## API Integration
 
-The application integrates with the CoinGecko API to fetch data from two endpoints:
+The application integrates with the CoinGecko API to fetch data from three endpoints:
 
 ### Asset Platforms
 - **Endpoint**: `https://api.coingecko.com/api/v3/asset_platforms`
@@ -230,6 +266,12 @@ The application integrates with the CoinGecko API to fetch data from two endpoin
 - **Method**: GET
 - **Response**: Array of category objects
 - **Data**: Coin categories like DeFi, Stablecoins, NFTs, etc.
+
+### Exchanges
+- **Endpoint**: `https://api.coingecko.com/api/v3/exchanges`
+- **Method**: GET
+- **Response**: Array of exchange objects
+- **Data**: Cryptocurrency exchanges with trading volumes, trust scores, and metadata
 
 ### Features
 - **Rate Limiting**: Built-in retry logic with exponential backoff

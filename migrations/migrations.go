@@ -34,6 +34,17 @@ func GetMigrations() []*gormigrate.Migration {
 			},
 		},
 		{
+			ID: "2024010104",
+			Migrate: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Running migration: Create exchanges table")
+				return tx.AutoMigrate(&domain.Exchange{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Rolling back migration: Drop exchanges table")
+				return tx.Migrator().DropTable(&domain.Exchange{})
+			},
+		},
+		{
 			ID: "2024010102",
 			Migrate: func(tx *gorm.DB) error {
 				logger.GetLogger().Info("Running migration: Add indexes to asset_platforms table")
