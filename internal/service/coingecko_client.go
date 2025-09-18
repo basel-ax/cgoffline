@@ -1,0 +1,145 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"cgoffline/internal/domain"
+	"cgoffline/pkg/config"
+	"cgoffline/pkg/logger"
+)
+
+// CoinGeckoClient handles communication with the CoinGecko API
+type CoinGeckoClient struct {
+	baseURL    string
+	httpClient *http.Client
+	retryCount int
+	retryDelay time.Duration
+}
+
+// NewCoinGeckoClient creates a new CoinGecko API client
+func NewCoinGeckoClient(cfg config.APIConfig) *CoinGeckoClient {
+	return &CoinGeckoClient{
+		baseURL: cfg.CoinGeckoBaseURL,
+		httpClient: &http.Client{
+			Timeout: cfg.Timeout,
+		},
+		retryCount: cfg.RetryAttempts,
+		retryDelay: cfg.RetryDelay,
+	}
+}
+
+// AssetPlatformResponse represents the response structure from CoinGecko API
+type AssetPlatformResponse struct {
+	ID              string  `json:"id"`
+	ChainIdentifier *int64  `json:"chain_identifier"`
+	Name            string  `json:"name"`
+	ShortName       *string `json:"short_name"`
+	NativeCoinID    *string `json:"native_coin_id"`
+}
+
+// GetAssetPlatforms fetches all asset platforms from CoinGecko API
+func (c *CoinGeckoClient) GetAssetPlatforms(ctx context.Context) ([]domain.AssetPlatform, error) {
+	url := fmt.Sprintf("%s/asset_platforms", c.baseURL)
+
+	logger.GetLogger().WithField("url", url).Info("Fetching asset platforms from CoinGecko API")
+
+	var platforms []domain.AssetPlatform
+	var lastErr error
+
+	// Retry logic
+	for attempt := 0; attempt <= c.retryCount; attempt++ {
+		if attempt > 0 {
+			logger.GetLogger().WithField("attempt", attempt).Info("Retrying API request")
+			time.Sleep(c.retryDelay)
+		}
+
+		platforms, lastErr = c.fetchAssetPlatforms(ctx, url)
+		if lastErr == nil {
+			break
+		}
+
+		logger.GetLogger().WithError(lastErr).WithField("attempt", attempt).Warn("API request failed")
+	}
+
+	if lastErr != nil {
+		logger.GetLogger().WithError(lastErr).Error("Failed to fetch asset platforms after all retry attempts")
+		return nil, fmt.Errorf("failed to fetch asset platforms: %w", lastErr)
+	}
+
+	logger.GetLogger().WithField("count", len(platforms)).Info("Successfully fetched asset platforms from CoinGecko API")
+	return platforms, nil
+}
+
+// fetchAssetPlatforms performs the actual HTTP request
+func (c *CoinGeckoClient) fetchAssetPlatforms(ctx context.Context, url string) ([]domain.AssetPlatform, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "cgoffline/1.0")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var apiPlatforms []AssetPlatformResponse
+	if err := json.Unmarshal(body, &apiPlatforms); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Convert API response to domain models
+	platforms := make([]domain.AssetPlatform, len(apiPlatforms))
+	for i, apiPlatform := range apiPlatforms {
+		platforms[i] = domain.AssetPlatform{
+			ID:              apiPlatform.ID,
+			ChainIdentifier: apiPlatform.ChainIdentifier,
+			Name:            apiPlatform.Name,
+			ShortName:       apiPlatform.ShortName,
+			NativeCoinID:    apiPlatform.NativeCoinID,
+		}
+	}
+
+	return platforms, nil
+}
+
+// HealthCheck checks if the CoinGecko API is accessible
+func (c *CoinGeckoClient) HealthCheck(ctx context.Context) error {
+	url := fmt.Sprintf("%s/ping", c.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create health check request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("health check failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health check failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
