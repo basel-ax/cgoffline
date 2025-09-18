@@ -64,6 +64,64 @@ type ExchangeResponse struct {
 	TradeVolume24hBTCNormalized *float64 `json:"trade_volume_24h_btc_normalized"`
 }
 
+// CoinResponse represents the response structure for coins from CoinGecko API
+type CoinResponse struct {
+	ID                           string     `json:"id"`
+	Symbol                       string     `json:"symbol"`
+	Name                         string     `json:"name"`
+	Image                        *string    `json:"image"`
+	CurrentPrice                 *float64   `json:"current_price"`
+	MarketCap                    *float64   `json:"market_cap"`
+	MarketCapRank                *int       `json:"market_cap_rank"`
+	FullyDilutedValuation        *float64   `json:"fully_diluted_valuation"`
+	TotalVolume                  *float64   `json:"total_volume"`
+	High24h                      *float64   `json:"high_24h"`
+	Low24h                       *float64   `json:"low_24h"`
+	PriceChange24h               *float64   `json:"price_change_24h"`
+	PriceChangePercentage24h     *float64   `json:"price_change_percentage_24h"`
+	MarketCapChange24h           *float64   `json:"market_cap_change_24h"`
+	MarketCapChangePercentage24h *float64   `json:"market_cap_change_percentage_24h"`
+	CirculatingSupply            *float64   `json:"circulating_supply"`
+	TotalSupply                  *float64   `json:"total_supply"`
+	MaxSupply                    *float64   `json:"max_supply"`
+	Ath                          *float64   `json:"ath"`
+	AthChangePercentage          *float64   `json:"ath_change_percentage"`
+	AthDate                      *time.Time `json:"ath_date"`
+	Atl                          *float64   `json:"atl"`
+	AtlChangePercentage          *float64   `json:"atl_change_percentage"`
+	AtlDate                      *time.Time `json:"atl_date"`
+	LastUpdated                  *time.Time `json:"last_updated"`
+}
+
+// CoinMarketDataResponse represents the response structure for coin market data from CoinGecko API
+type CoinMarketDataResponse struct {
+	ID                           string     `json:"id"`
+	Symbol                       string     `json:"symbol"`
+	Name                         string     `json:"name"`
+	Image                        *string    `json:"image"`
+	CurrentPrice                 *float64   `json:"current_price"`
+	MarketCap                    *float64   `json:"market_cap"`
+	MarketCapRank                *int       `json:"market_cap_rank"`
+	FullyDilutedValuation        *float64   `json:"fully_diluted_valuation"`
+	TotalVolume                  *float64   `json:"total_volume"`
+	High24h                      *float64   `json:"high_24h"`
+	Low24h                       *float64   `json:"low_24h"`
+	PriceChange24h               *float64   `json:"price_change_24h"`
+	PriceChangePercentage24h     *float64   `json:"price_change_percentage_24h"`
+	MarketCapChange24h           *float64   `json:"market_cap_change_24h"`
+	MarketCapChangePercentage24h *float64   `json:"market_cap_change_percentage_24h"`
+	CirculatingSupply            *float64   `json:"circulating_supply"`
+	TotalSupply                  *float64   `json:"total_supply"`
+	MaxSupply                    *float64   `json:"max_supply"`
+	Ath                          *float64   `json:"ath"`
+	AthChangePercentage          *float64   `json:"ath_change_percentage"`
+	AthDate                      *time.Time `json:"ath_date"`
+	Atl                          *float64   `json:"atl"`
+	AtlChangePercentage          *float64   `json:"atl_change_percentage"`
+	AtlDate                      *time.Time `json:"atl_date"`
+	LastUpdated                  *time.Time `json:"last_updated"`
+}
+
 // GetAssetPlatforms fetches all asset platforms from CoinGecko API
 func (c *CoinGeckoClient) GetAssetPlatforms(ctx context.Context) ([]domain.AssetPlatform, error) {
 	url := fmt.Sprintf("%s/asset_platforms", c.baseURL)
@@ -306,6 +364,228 @@ func (c *CoinGeckoClient) fetchExchanges(ctx context.Context, url string) ([]dom
 	}
 
 	return exchanges, nil
+}
+
+// GetCoins fetches coins with market data from CoinGecko API
+func (c *CoinGeckoClient) GetCoins(ctx context.Context, page int, perPage int) ([]domain.Coin, error) {
+	url := fmt.Sprintf("%s/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=%d&page=%d&sparkline=false",
+		c.baseURL, perPage, page)
+
+	logger.GetLogger().WithFields(map[string]interface{}{
+		"url":      url,
+		"page":     page,
+		"per_page": perPage,
+	}).Info("Fetching coins from CoinGecko API")
+
+	var coins []domain.Coin
+	var lastErr error
+
+	// Retry logic
+	for attempt := 0; attempt <= c.retryCount; attempt++ {
+		if attempt > 0 {
+			logger.GetLogger().WithField("attempt", attempt).Info("Retrying API request")
+			time.Sleep(c.retryDelay)
+		}
+
+		coins, lastErr = c.fetchCoins(ctx, url)
+		if lastErr == nil {
+			break
+		}
+
+		logger.GetLogger().WithError(lastErr).WithField("attempt", attempt).Warn("API request failed")
+	}
+
+	if lastErr != nil {
+		logger.GetLogger().WithError(lastErr).Error("Failed to fetch coins after all retry attempts")
+		return nil, fmt.Errorf("failed to fetch coins: %w", lastErr)
+	}
+
+	logger.GetLogger().WithField("count", len(coins)).Info("Successfully fetched coins from CoinGecko API")
+	return coins, nil
+}
+
+// fetchCoins performs the actual HTTP request for coins
+func (c *CoinGeckoClient) fetchCoins(ctx context.Context, url string) ([]domain.Coin, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "cgoffline/1.0")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var apiCoins []CoinResponse
+	if err := json.Unmarshal(body, &apiCoins); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Convert API response to domain models
+	coins := make([]domain.Coin, len(apiCoins))
+	for i, apiCoin := range apiCoins {
+		coins[i] = domain.Coin{
+			CoingeckoID:                  apiCoin.ID,
+			Symbol:                       apiCoin.Symbol,
+			Name:                         apiCoin.Name,
+			Image:                        apiCoin.Image,
+			CurrentPrice:                 apiCoin.CurrentPrice,
+			MarketCap:                    apiCoin.MarketCap,
+			MarketCapRank:                apiCoin.MarketCapRank,
+			FullyDilutedValuation:        apiCoin.FullyDilutedValuation,
+			TotalVolume:                  apiCoin.TotalVolume,
+			High24h:                      apiCoin.High24h,
+			Low24h:                       apiCoin.Low24h,
+			PriceChange24h:               apiCoin.PriceChange24h,
+			PriceChangePercentage24h:     apiCoin.PriceChangePercentage24h,
+			MarketCapChange24h:           apiCoin.MarketCapChange24h,
+			MarketCapChangePercentage24h: apiCoin.MarketCapChangePercentage24h,
+			CirculatingSupply:            apiCoin.CirculatingSupply,
+			TotalSupply:                  apiCoin.TotalSupply,
+			MaxSupply:                    apiCoin.MaxSupply,
+			Ath:                          apiCoin.Ath,
+			AthChangePercentage:          apiCoin.AthChangePercentage,
+			AthDate:                      apiCoin.AthDate,
+			Atl:                          apiCoin.Atl,
+			AtlChangePercentage:          apiCoin.AtlChangePercentage,
+			AtlDate:                      apiCoin.AtlDate,
+			LastUpdated:                  apiCoin.LastUpdated,
+		}
+	}
+
+	return coins, nil
+}
+
+// GetCoinMarketData fetches market data for a specific coin from CoinGecko API
+func (c *CoinGeckoClient) GetCoinMarketData(ctx context.Context, coinID string) ([]domain.CoinMarketData, error) {
+	url := fmt.Sprintf("%s/coins/%s/tickers", c.baseURL, coinID)
+
+	logger.GetLogger().WithFields(map[string]interface{}{
+		"url":     url,
+		"coin_id": coinID,
+	}).Info("Fetching coin market data from CoinGecko API")
+
+	var marketData []domain.CoinMarketData
+	var lastErr error
+
+	// Retry logic
+	for attempt := 0; attempt <= c.retryCount; attempt++ {
+		if attempt > 0 {
+			logger.GetLogger().WithField("attempt", attempt).Info("Retrying API request")
+			time.Sleep(c.retryDelay)
+		}
+
+		marketData, lastErr = c.fetchCoinMarketData(ctx, url, coinID)
+		if lastErr == nil {
+			break
+		}
+
+		logger.GetLogger().WithError(lastErr).WithField("attempt", attempt).Warn("API request failed")
+	}
+
+	if lastErr != nil {
+		logger.GetLogger().WithError(lastErr).Error("Failed to fetch coin market data after all retry attempts")
+		return nil, fmt.Errorf("failed to fetch coin market data: %w", lastErr)
+	}
+
+	logger.GetLogger().WithField("count", len(marketData)).Info("Successfully fetched coin market data from CoinGecko API")
+	return marketData, nil
+}
+
+// fetchCoinMarketData performs the actual HTTP request for coin market data
+func (c *CoinGeckoClient) fetchCoinMarketData(ctx context.Context, url string, coinID string) ([]domain.CoinMarketData, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "cgoffline/1.0")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var response struct {
+		Tickers []struct {
+			Base   string `json:"base"`
+			Target string `json:"target"`
+			Market struct {
+				Name       string `json:"name"`
+				Identifier string `json:"identifier"`
+			} `json:"market"`
+			Last          *float64 `json:"last"`
+			Volume        *float64 `json:"volume"`
+			ConvertedLast struct {
+				USD *float64 `json:"usd"`
+			} `json:"converted_last"`
+			ConvertedVolume struct {
+				USD *float64 `json:"usd"`
+			} `json:"converted_volume"`
+			TrustScore             string     `json:"trust_score"`
+			BidAskSpreadPercentage *float64   `json:"bid_ask_spread_percentage"`
+			Timestamp              *time.Time `json:"timestamp"`
+			LastTradedAt           *time.Time `json:"last_traded_at"`
+			LastFetchAt            *time.Time `json:"last_fetch_at"`
+			IsAnomaly              bool       `json:"is_anomaly"`
+			IsStale                bool       `json:"is_stale"`
+			TradeURL               *string    `json:"trade_url"`
+			TokenInfoURL           *string    `json:"token_info_url"`
+			CoinID                 string     `json:"coin_id"`
+		} `json:"tickers"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Convert API response to domain models
+	marketData := make([]domain.CoinMarketData, 0, len(response.Tickers))
+	for _, ticker := range response.Tickers {
+		// Skip if no price data
+		if ticker.Last == nil {
+			continue
+		}
+
+		marketData = append(marketData, domain.CoinMarketData{
+			// Note: CoinID and ExchangeID will be set by the service layer
+			// after resolving the coin and exchange IDs
+			Price:            ticker.Last,
+			Volume24h:        ticker.Volume,
+			VolumePercentage: nil, // Not available in this API response
+			LastUpdated:      ticker.LastTradedAt,
+		})
+	}
+
+	return marketData, nil
 }
 
 // HealthCheck checks if the CoinGecko API is accessible

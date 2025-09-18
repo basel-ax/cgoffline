@@ -45,6 +45,28 @@ func GetMigrations() []*gormigrate.Migration {
 			},
 		},
 		{
+			ID: "2024010105",
+			Migrate: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Running migration: Create coins table")
+				return tx.AutoMigrate(&domain.Coin{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Rolling back migration: Drop coins table")
+				return tx.Migrator().DropTable(&domain.Coin{})
+			},
+		},
+		{
+			ID: "2024010106",
+			Migrate: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Running migration: Create coin_market_data table")
+				return tx.AutoMigrate(&domain.CoinMarketData{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Rolling back migration: Drop coin_market_data table")
+				return tx.Migrator().DropTable(&domain.CoinMarketData{})
+			},
+		},
+		{
 			ID: "2024010102",
 			Migrate: func(tx *gorm.DB) error {
 				logger.GetLogger().Info("Running migration: Add indexes to asset_platforms table")

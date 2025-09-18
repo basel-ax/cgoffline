@@ -96,7 +96,10 @@ make sync-categories
 # Sync exchanges only
 make sync-exchanges
 
-# Sync all data (platforms, categories, and exchanges)
+# Sync coins and their market data only
+make sync-coins
+
+# Sync all data (platforms, categories, exchanges, and coins)
 make sync-all
 ```
 
@@ -129,7 +132,10 @@ make run
 # Sync exchanges and exit
 ./bin/cgoffline -sync-exchanges
 
-# Sync all data (platforms, categories, and exchanges) and exit
+# Sync coins and their market data and exit
+./bin/cgoffline -sync-coins
+
+# Sync all data (platforms, categories, exchanges, and coins) and exit
 ./bin/cgoffline -sync-all
 
 # Run application normally (with initial sync)
@@ -150,7 +156,8 @@ make status         # Show migration status
 make sync-platforms # Sync asset platforms
 make sync-categories # Sync coin categories
 make sync-exchanges  # Sync exchanges
-make sync-all       # Sync all data (platforms, categories, and exchanges)
+make sync-coins      # Sync coins and their market data
+make sync-all       # Sync all data (platforms, categories, exchanges, and coins)
 make setup-db       # Setup local PostgreSQL database
 make dev-setup      # Complete development setup
 ```
@@ -251,9 +258,73 @@ CREATE INDEX idx_exchanges_trust_score ON exchanges(trust_score);
 CREATE INDEX idx_exchanges_country ON exchanges(country);
 ```
 
+### Coins Table
+
+```sql
+CREATE TABLE coins (
+    id SERIAL PRIMARY KEY,
+    coingecko_id VARCHAR(100) UNIQUE NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    image VARCHAR(500),
+    current_price DOUBLE PRECISION,
+    market_cap DOUBLE PRECISION,
+    market_cap_rank INTEGER,
+    fully_diluted_valuation DOUBLE PRECISION,
+    total_volume DOUBLE PRECISION,
+    high_24h DOUBLE PRECISION,
+    low_24h DOUBLE PRECISION,
+    price_change_24h DOUBLE PRECISION,
+    price_change_percentage_24h DOUBLE PRECISION,
+    market_cap_change_24h DOUBLE PRECISION,
+    market_cap_change_percentage_24h DOUBLE PRECISION,
+    circulating_supply DOUBLE PRECISION,
+    total_supply DOUBLE PRECISION,
+    max_supply DOUBLE PRECISION,
+    ath DOUBLE PRECISION,
+    ath_change_percentage DOUBLE PRECISION,
+    ath_date TIMESTAMP WITH TIME ZONE,
+    atl DOUBLE PRECISION,
+    atl_change_percentage DOUBLE PRECISION,
+    atl_date TIMESTAMP WITH TIME ZONE,
+    last_updated TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes
+CREATE UNIQUE INDEX idx_coins_coingecko_id ON coins(coingecko_id);
+CREATE INDEX idx_coins_symbol ON coins(symbol);
+CREATE INDEX idx_coins_name ON coins(name);
+CREATE INDEX idx_coins_market_cap_rank ON coins(market_cap_rank);
+```
+
+### Coin Market Data Table
+
+```sql
+CREATE TABLE coin_market_data (
+    id SERIAL PRIMARY KEY,
+    coin_id INTEGER NOT NULL REFERENCES coins(id),
+    exchange_id INTEGER NOT NULL REFERENCES exchanges(id),
+    price DOUBLE PRECISION,
+    volume_24h DOUBLE PRECISION,
+    volume_percentage DOUBLE PRECISION,
+    last_updated TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes
+CREATE INDEX idx_coin_market_data_coin_id ON coin_market_data(coin_id);
+CREATE INDEX idx_coin_market_data_exchange_id ON coin_market_data(exchange_id);
+CREATE UNIQUE INDEX idx_coin_market_data_coin_exchange ON coin_market_data(coin_id, exchange_id);
+```
+
 ## API Integration
 
-The application integrates with the CoinGecko API to fetch data from three endpoints:
+The application integrates with the CoinGecko API to fetch data from five endpoints:
 
 ### Asset Platforms
 - **Endpoint**: `https://api.coingecko.com/api/v3/asset_platforms`
@@ -272,6 +343,18 @@ The application integrates with the CoinGecko API to fetch data from three endpo
 - **Method**: GET
 - **Response**: Array of exchange objects
 - **Data**: Cryptocurrency exchanges with trading volumes, trust scores, and metadata
+
+### Coins
+- **Endpoint**: `https://api.coingecko.com/api/v3/coins/markets`
+- **Method**: GET
+- **Response**: Array of coin objects with market data
+- **Data**: Cryptocurrency coins with prices, market caps, volumes, and market rankings
+
+### Coin Market Data
+- **Endpoint**: `https://api.coingecko.com/api/v3/coins/{coin_id}/tickers`
+- **Method**: GET
+- **Response**: Array of ticker objects
+- **Data**: Market data for specific coins across different exchanges
 
 ### Features
 - **Rate Limiting**: Built-in retry logic with exponential backoff
