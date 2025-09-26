@@ -507,6 +507,118 @@ func (c *CoinGeckoClient) GetCoinMarketData(ctx context.Context, coinID string) 
 	return marketData, nil
 }
 
+// GetCoinDataByID fetches full coin data by ID from CoinGecko API (/coins/{id})
+func (c *CoinGeckoClient) GetCoinDataByID(ctx context.Context, coinID string) (map[string]any, error) {
+	url := fmt.Sprintf("%s/coins/%s", c.baseURL, coinID)
+
+	logger.GetLogger().WithFields(map[string]interface{}{
+		"url":     url,
+		"coin_id": coinID,
+	}).Info("Fetching coin data by ID from CoinGecko API")
+
+	var lastErr error
+	var payload map[string]any
+
+	for attempt := 0; attempt <= c.retryCount; attempt++ {
+		if attempt > 0 {
+			logger.GetLogger().WithField("attempt", attempt).Info("Retrying API request")
+			time.Sleep(c.retryDelay)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "cgoffline/1.0")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to execute request: %w", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			lastErr = fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response body: %w", err)
+			continue
+		}
+
+		if err := json.Unmarshal(body, &payload); err != nil {
+			lastErr = fmt.Errorf("failed to unmarshal response: %w", err)
+			continue
+		}
+
+		return payload, nil
+	}
+
+	return nil, fmt.Errorf("failed to fetch coin data by id: %w", lastErr)
+}
+
+// GetCoinTickers fetches coin tickers by ID from CoinGecko API (/coins/{id}/tickers)
+// Reference: https://docs.coingecko.com/v3.0.1/reference/coins-id-tickers
+func (c *CoinGeckoClient) GetCoinTickers(ctx context.Context, coinID string, page int) (map[string]any, error) {
+	url := fmt.Sprintf("%s/coins/%s/tickers?page=%d", c.baseURL, coinID, page)
+
+	logger.GetLogger().WithFields(map[string]interface{}{
+		"url":     url,
+		"coin_id": coinID,
+		"page":    page,
+	}).Info("Fetching coin tickers by ID from CoinGecko API")
+
+	var lastErr error
+	var payload map[string]any
+
+	for attempt := 0; attempt <= c.retryCount; attempt++ {
+		if attempt > 0 {
+			logger.GetLogger().WithField("attempt", attempt).Info("Retrying API request")
+			time.Sleep(c.retryDelay)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "cgoffline/1.0")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to execute request: %w", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			lastErr = fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response body: %w", err)
+			continue
+		}
+
+		if err := json.Unmarshal(body, &payload); err != nil {
+			lastErr = fmt.Errorf("failed to unmarshal response: %w", err)
+			continue
+		}
+
+		return payload, nil
+	}
+
+	return nil, fmt.Errorf("failed to fetch coin tickers: %w", lastErr)
+}
+
 // fetchCoinMarketData performs the actual HTTP request for coin market data
 func (c *CoinGeckoClient) fetchCoinMarketData(ctx context.Context, url string, coinID string) ([]domain.CoinMarketData, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)

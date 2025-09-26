@@ -5,6 +5,7 @@ import (
 	"cgoffline/internal/repository"
 	"cgoffline/pkg/logger"
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -13,6 +14,7 @@ import (
 type CoinService interface {
 	SyncCoins() error
 	SyncCoinMarketData(coinID string) error
+	SyncCoinsData(minTotalVolume float64) error
 }
 
 type coinService struct {
@@ -20,6 +22,8 @@ type coinService struct {
 	coinMarketDataRepo repository.CoinMarketDataRepository
 	exchangeRepo       repository.ExchangeRepository
 	coingeckoClient    *CoinGeckoClient
+	coinDetailRepo     repository.CoinDetailRepository
+	coinTickerRepo     repository.CoinTickerRepository
 }
 
 // NewCoinService creates a new instance of CoinService
@@ -27,12 +31,16 @@ func NewCoinService(
 	coinRepo repository.CoinRepository,
 	coinMarketDataRepo repository.CoinMarketDataRepository,
 	exchangeRepo repository.ExchangeRepository,
+	coinDetailRepo repository.CoinDetailRepository,
+	coinTickerRepo repository.CoinTickerRepository,
 	client *CoinGeckoClient,
 ) CoinService {
 	return &coinService{
 		coinRepo:           coinRepo,
 		coinMarketDataRepo: coinMarketDataRepo,
 		exchangeRepo:       exchangeRepo,
+		coinDetailRepo:     coinDetailRepo,
+		coinTickerRepo:     coinTickerRepo,
 		coingeckoClient:    client,
 	}
 }
@@ -186,5 +194,106 @@ func (s *coinService) SyncCoinMarketData(coinID string) error {
 	}).Info("Successfully fetched and stored coin market data")
 
 	logger.GetLogger().WithField("coin_id", coinID).Info("Coin market data synchronization completed successfully")
+	return nil
+}
+
+// SyncCoinsData fetches detailed coin data and tickers for coins above a volume threshold
+func (s *coinService) SyncCoinsData(minTotalVolume float64) error {
+	logger.GetLogger().WithField("min_total_volume", minTotalVolume).Info("Starting coins data synchronization")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+	defer cancel()
+
+	// Load coins and filter by volume
+	coins, err := s.coinRepo.GetAll()
+	if err != nil {
+		return fmt.Errorf("failed to load coins: %w", err)
+	}
+
+	filtered := make([]domain.Coin, 0, len(coins))
+	for _, c := range coins {
+		if c.TotalVolume != nil && *c.TotalVolume >= minTotalVolume {
+			filtered = append(filtered, c)
+		}
+	}
+
+	logger.GetLogger().WithFields(map[string]interface{}{
+		"eligible": len(filtered),
+		"total":    len(coins),
+	}).Info("Coins eligible for detailed sync by volume filter")
+
+	// For each coin, fetch coin data and tickers; store raw JSON in coin_details
+	for _, c := range filtered {
+		// Fetch /coins/{id}
+		data, err := s.coingeckoClient.GetCoinDataByID(ctx, c.CoingeckoID)
+		if err != nil {
+			logger.GetLogger().WithError(err).WithField("coin_id", c.CoingeckoID).Warn("Failed to fetch coin data by id; skipping")
+			continue
+		}
+
+		// Save coin detail
+		raw, _ := json.Marshal(data)
+		detail := domain.CoinDetail{
+			CoinID:      c.ID,
+			CoingeckoID: c.CoingeckoID,
+			RawJSON:     raw,
+		}
+
+		// Optional denormalized fields
+		if v, ok := data["genesis_date"].(string); ok && v != "" {
+			if t, parseErr := time.Parse(time.RFC3339, v+"T00:00:00Z"); parseErr == nil {
+				detail.GenesisDate = &t
+			}
+		}
+		if v, ok := data["hashing_algorithm"].(string); ok {
+			detail.HashingAlgo = &v
+		}
+		if cats, ok := data["categories"].([]any); ok {
+			if b, mErr := json.Marshal(cats); mErr == nil {
+				detail.Categories = b
+			}
+		}
+		if links, ok := data["links"].(map[string]any); ok {
+			if hp, ok2 := links["homepage"].([]any); ok2 {
+				if b, mErr := json.Marshal(hp); mErr == nil {
+					detail.Homepage = b
+				}
+			}
+		}
+
+		if lu, ok := data["last_updated"].(string); ok && lu != "" {
+			if t, perr := time.Parse(time.RFC3339, lu); perr == nil {
+				detail.LastUpdatedAt = &t
+			}
+		}
+
+		if err := s.coinDetailRepo.Upsert(detail); err != nil {
+			logger.GetLogger().WithError(err).WithField("coin_id", c.CoingeckoID).Warn("Failed to upsert coin detail")
+		}
+
+		// Fetch tickers with pagination (100 per page). Persisting raw is sufficient for now.
+		page := 1
+		for {
+			tickersPayload, err := s.coingeckoClient.GetCoinTickers(ctx, c.CoingeckoID, page)
+			if err != nil {
+				logger.GetLogger().WithError(err).WithFields(map[string]interface{}{"coin_id": c.CoingeckoID, "page": page}).Warn("Failed to fetch tickers; stopping pagination")
+				break
+			}
+			// persist
+			if b, mErr := json.Marshal(tickersPayload); mErr == nil {
+				_ = s.coinTickerRepo.Upsert(domain.CoinTicker{CoinID: c.ID, Page: page, RawJSON: b})
+			}
+			// We currently do not persist tickers separately; this is a placeholder to extend later.
+			// Stop if no tickers returned
+			if arr, ok := tickersPayload["tickers"].([]any); !ok || len(arr) == 0 {
+				break
+			}
+			// Next page
+			page++
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	logger.GetLogger().Info("Coins data synchronization completed")
 	return nil
 }

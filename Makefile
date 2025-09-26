@@ -1,4 +1,4 @@
-.PHONY: help build run test clean migrate rollback status sync-platforms sync-categories sync-exchanges sync-coins sync-all setup-db
+.PHONY: help build run test clean migrate rollback status sync-platforms sync-categories sync-exchanges sync-coins sync-coins-data sync-all setup-db
 
 # Default target
 help:
@@ -14,6 +14,7 @@ help:
 	@echo "  sync-categories - Sync coin categories from CoinGecko API"
 	@echo "  sync-exchanges  - Sync exchanges from CoinGecko API"
 	@echo "  sync-coins      - Sync coins and their market data from CoinGecko API"
+	@echo "  sync-coins-data - Sync full coin data and tickers (filtered by volume)"
 	@echo "  sync-all        - Sync asset platforms, coin categories, exchanges, and coins"
 	@echo "  setup-db        - Setup local PostgreSQL database"
 
@@ -65,6 +66,10 @@ sync-exchanges: build
 sync-coins: build
 	@echo "Syncing coins and their market data..."
 	./bin/cgoffline -sync-coins
+
+sync-coins-data: build
+	@echo "Syncing coin details and tickers (filtered by volume)..."
+	./bin/cgoffline -sync-coins-data
 
 sync-all: build
 	@echo "Syncing all data (platforms, categories, exchanges, and coins)..."

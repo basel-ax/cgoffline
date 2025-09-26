@@ -32,6 +32,7 @@ type APIConfig struct {
 	Timeout          time.Duration
 	RetryAttempts    int
 	RetryDelay       time.Duration
+	MinTotalVolume   float64
 }
 
 // ServerConfig holds server configuration
@@ -63,6 +64,7 @@ func LoadConfig() *Config {
 			Timeout:          getEnvAsDuration("API_TIMEOUT", 30*time.Second),
 			RetryAttempts:    getEnvAsInt("API_RETRY_ATTEMPTS", 3),
 			RetryDelay:       getEnvAsDuration("API_RETRY_DELAY", 1*time.Second),
+			MinTotalVolume:   getEnvAsFloat("COINS_MIN_TOTAL_VOLUME", 1000000),
 		},
 		Server: ServerConfig{
 			Port: getEnvAsInt("SERVER_PORT", 8080),
@@ -111,6 +113,16 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
 		if duration, err := time.ParseDuration(value); err == nil {
 			return duration
+		}
+	}
+	return defaultValue
+}
+
+// getEnvAsFloat gets an environment variable as float64 with a fallback default value
+func getEnvAsFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
 		}
 	}
 	return defaultValue

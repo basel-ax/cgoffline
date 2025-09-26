@@ -99,6 +99,28 @@ func GetMigrations() []*gormigrate.Migration {
 				return nil
 			},
 		},
+		{
+			ID: "2024010107",
+			Migrate: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Running migration: Create coin_details table")
+				return tx.AutoMigrate(&domain.CoinDetail{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Rolling back migration: Drop coin_details table")
+				return tx.Migrator().DropTable(&domain.CoinDetail{})
+			},
+		},
+		{
+			ID: "2024010108",
+			Migrate: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Running migration: Create coin_tickers table")
+				return tx.AutoMigrate(&domain.CoinTicker{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				logger.GetLogger().Info("Rolling back migration: Drop coin_tickers table")
+				return tx.Migrator().DropTable(&domain.CoinTicker{})
+			},
+		},
 	}
 }
 

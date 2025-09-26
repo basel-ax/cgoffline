@@ -99,6 +99,9 @@ make sync-exchanges
 # Sync coins and their market data only
 make sync-coins
 
+# Sync coin details and tickers (filtered by volume)
+make sync-coins-data
+
 # Sync all data (platforms, categories, exchanges, and coins)
 make sync-all
 ```
@@ -135,6 +138,9 @@ make run
 # Sync coins and their market data and exit
 ./bin/cgoffline -sync-coins
 
+# Sync coin details and tickers (filtered by volume) and exit
+./bin/cgoffline -sync-coins-data
+
 # Sync all data (platforms, categories, exchanges, and coins) and exit
 ./bin/cgoffline -sync-all
 
@@ -157,7 +163,8 @@ make sync-platforms # Sync asset platforms
 make sync-categories # Sync coin categories
 make sync-exchanges  # Sync exchanges
 make sync-coins      # Sync coins and their market data
-make sync-all       # Sync all data (platforms, categories, exchanges, and coins)
+make sync-coins-data # Sync coin details and tickers (filtered by volume)
+make sync-all        # Sync all data (platforms, categories, exchanges, and coins)
 make setup-db       # Setup local PostgreSQL database
 make dev-setup      # Complete development setup
 ```
@@ -185,6 +192,7 @@ cp env.example env
 | `API_TIMEOUT` | API timeout | `30s` |
 | `API_RETRY_ATTEMPTS` | Retry attempts | `3` |
 | `API_RETRY_DELAY` | Retry delay | `1s` |
+| `COINS_MIN_TOTAL_VOLUME` | Minimum total_volume to include in coins-data sync | `1000000` |
 | `LOG_LEVEL` | Log level | `info` |
 | `LOG_FORMAT` | Log format | `json` |
 

@@ -21,6 +21,7 @@ func main() {
 		syncCategories = flag.Bool("sync-categories", false, "Only sync coin categories and exit")
 		syncExchanges  = flag.Bool("sync-exchanges", false, "Only sync exchanges and exit")
 		syncCoins      = flag.Bool("sync-coins", false, "Only sync coins and their market data and exit")
+		syncCoinsData  = flag.Bool("sync-coins-data", false, "Sync full coin data and tickers (filtered by volume) and exit")
 		syncAll        = flag.Bool("sync-all", false, "Sync asset platforms, coin categories, exchanges, and coins and exit")
 		migrate        = flag.Bool("migrate", false, "Run database migrations and exit")
 		rollback       = flag.Bool("rollback", false, "Rollback last migration and exit")
@@ -78,11 +79,13 @@ func main() {
 	exchangeRepo := repository.NewExchangeRepository(db)
 	coinRepo := repository.NewCoinRepository(db)
 	coinMarketDataRepo := repository.NewCoinMarketDataRepository(db)
+	coinDetailRepo := repository.NewCoinDetailRepository(db)
+	coinTickerRepo := repository.NewCoinTickerRepository(db)
 	coinGeckoClient := service.NewCoinGeckoClient(cfg.API)
 	assetPlatformService := service.NewAssetPlatformService(assetPlatformRepo, coinGeckoClient)
 	coinCategoryService := service.NewCoinCategoryService(coinCategoryRepo, coinGeckoClient)
 	exchangeService := service.NewExchangeService(exchangeRepo, coinGeckoClient)
-	coinService := service.NewCoinService(coinRepo, coinMarketDataRepo, exchangeRepo, coinGeckoClient)
+	coinService := service.NewCoinService(coinRepo, coinMarketDataRepo, exchangeRepo, coinDetailRepo, coinTickerRepo, coinGeckoClient)
 
 	// Handle sync-platforms mode
 	if *syncPlatforms {
@@ -121,6 +124,16 @@ func main() {
 			log.WithError(err).Fatal("Failed to sync coins")
 		}
 		log.Info("Coins synchronization completed successfully")
+		return
+	}
+
+	// Handle sync-coins-data mode
+	if *syncCoinsData {
+		log.Info("Running coins data synchronization (details and tickers)")
+		if err := coinService.SyncCoinsData(cfg.API.MinTotalVolume); err != nil {
+			log.WithError(err).Fatal("Failed to sync coins data")
+		}
+		log.Info("Coins data synchronization completed successfully")
 		return
 	}
 
@@ -188,6 +201,7 @@ func printUsage() {
 	fmt.Println("  -sync-platforms   Only sync asset platforms and exit")
 	fmt.Println("  -sync-categories  Only sync coin categories and exit")
 	fmt.Println("  -sync-exchanges   Only sync exchanges and exit")
+	fmt.Println("  -sync-coins-data  Sync full coin data and tickers (filtered by volume) and exit")
 	fmt.Println("  -sync-coins       Only sync coins and their market data and exit")
 	fmt.Println("  -sync-all         Sync asset platforms, coin categories, exchanges, and coins and exit")
 	fmt.Println("  -migrate          Run database migrations and exit")
